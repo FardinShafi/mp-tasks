@@ -1,26 +1,20 @@
-
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import MetaData, inspect, select, text
+from sqlalchemy import MetaData, inspect, select, text, delete
 from typing import List, Dict
 from .database import get_async_session, async_engine, async_session_maker
 from .crud import *
 from .models import Tables
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import AsyncEngine
-from sqlalchemy.ext.asyncio import AsyncConnection
-from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
-from .database import get_async_session
-from .schemas import UserCreate, UserLogin, Token
-from .crud import create_user, authenticate_user
-from .auth import create_access_token
-from typing import List
-
+from .auth import create_access_token, get_current_user
+from .schemas import UserCreate, UserLogin, Token, DashboardCreate, DashboardUpdate, DashboardComponentCreate, DashboardComponentUpdate
+from .crud import create_user, authenticate_user, create_dashboard, get_dashboard, create_dashboard_component, get_dashboard_components, delete_dashboard, delete_dashboard_component, update_dashboard, update_dashboard_component
+from .models import Tables
+from sqlalchemy.sql.expression import delete
 
 app = FastAPI()
 
@@ -56,20 +50,14 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+# Protected routes example using JWT authentication
+@app.get("/protected")
+async def protected_route(current_user: dict = Depends(get_current_user)):
+    return {"message": "This is a protected route", "user": current_user}
 
 # Endpoint to get table names
-# @app.get("/tables/")
-# async def get_tables():
-#     async with async_session_maker() as session:
-#         async with session.begin():
-#             result = await session.execute(
-#                 text("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")
-#             )
-#             table_name = [row[0] for row in result.fetchall()]
-#     return {"tables": table_name}
-
 @app.get("/tables/")
-async def get_tables(db: AsyncSession = Depends(get_async_session)):
+async def get_tables(db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
     async with db.begin():
         # Get table names from the database
         result = await db.execute(
@@ -94,11 +82,9 @@ async def get_tables(db: AsyncSession = Depends(get_async_session)):
 
     return {"tables": list(current_table_names)}
 
-
-
 # Endpoint to get column names and data types for a specific table
 @app.get("/tables/{table_name}/columns", response_model=Dict[str, str])
-async def get_columns(table_name: str, db: AsyncSession = Depends(get_async_session)) -> Dict[str, str]:
+async def get_columns(table_name: str, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)) -> Dict[str, str]:
     
     model_class = getattr(models, table_name.capitalize(), None)
 
@@ -114,7 +100,7 @@ async def get_columns(table_name: str, db: AsyncSession = Depends(get_async_sess
 
 # Endpoint to get the list of tables from the tables table
 @app.get("/all-tables", response_model=List[str])
-async def get_all_tables(db: AsyncSession = Depends(get_async_session)):
+async def get_all_tables(db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
     tables = await db.execute(select(Tables))
     table_names = sorted([table.table_name for table in tables.scalars().all()])
     
@@ -123,13 +109,13 @@ async def get_all_tables(db: AsyncSession = Depends(get_async_session)):
 # Task3 routes (unchanged)
 # Route to create a dashboard
 @app.post("/dashboards/")
-async def create_dashboard_handler(dashboard: DashboardCreate, db: AsyncSession = Depends(get_async_session)):
+async def create_dashboard_handler(dashboard: DashboardCreate, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
     created_dashboard = await create_dashboard(db, dashboard)
     return created_dashboard
 
 # Route to get a dashboard
 @app.get("/dashboards/{dashboard_id}")
-async def read_dashboard(dashboard_id: UUID, db: AsyncSession = Depends(get_async_session)):
+async def read_dashboard(dashboard_id: UUID, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
     # Cast the dashboard_id to String
     dashboard_id_str = str(dashboard_id)
 
@@ -141,39 +127,39 @@ async def read_dashboard(dashboard_id: UUID, db: AsyncSession = Depends(get_asyn
 
 # Route to create a dashboard component
 @app.post("/dashboards/{dashboard_id}/components/")
-async def create_dashboard_component_handler(dashboard_id: str, component: DashboardComponentCreate, db: AsyncSession = Depends(get_async_session)):
+async def create_dashboard_component_handler(dashboard_id: str, component: DashboardComponentCreate, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
     created_component = await create_dashboard_component(db, component, dashboard_id)
     return created_component
 
 # Route to get dashboard components
 @app.get("/dashboards/{dashboard_id}/components/")
-async def read_dashboard_components(dashboard_id: str, db: AsyncSession = Depends(get_async_session)):
+async def read_dashboard_components(dashboard_id: str, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
     components = await get_dashboard_components(db, dashboard_id)
     return components
 
 # Route to delete a dashboard
 @app.delete("/dashboards/{dashboard_id}")
-async def delete_dashboard_handler(dashboard_id: str, db: AsyncSession = Depends(get_async_session)):
+async def delete_dashboard_handler(dashboard_id: str, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
     deleted_dashboard = await delete_dashboard(db, dashboard_id)
     return deleted_dashboard
 
 # Route to delete a dashboard component
 @app.delete("/dashboards/components/{component_id}")
-async def delete_dashboard_component_handler(component_id: UUID, db: AsyncSession = Depends(get_async_session)):
+async def delete_dashboard_component_handler(component_id: UUID, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
     component_id_str = str(component_id)
     deleted_component = await delete_dashboard_component(db, component_id_str)
     return deleted_component
 
 # Route to update a dashboard
 @app.put("/dashboards/{dashboard_id}")
-async def update_dashboard_handler(dashboard_id: UUID, dashboard: DashboardUpdate, db: AsyncSession = Depends(get_async_session)):
+async def update_dashboard_handler(dashboard_id: UUID, dashboard: DashboardUpdate, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
     dashboard_id_str = str(dashboard_id)
     updated_dashboard = await update_dashboard(db, dashboard_id_str, dashboard)
     return updated_dashboard
 
 # Route to update a dashboard component
 @app.put("/dashboards/components/{component_id}")
-async def update_dashboard_component_handler(component_id: UUID, component: DashboardComponentUpdate, db: AsyncSession = Depends(get_async_session)):
+async def update_dashboard_component_handler(component_id: UUID, component: DashboardComponentUpdate, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
     component_id_str = str(component_id)
     updated_component = await update_dashboard_component(db, component_id_str, component)
     return updated_component

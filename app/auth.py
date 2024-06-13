@@ -1,9 +1,14 @@
 # app/auth.py
-
+from fastapi.security import OAuth2PasswordBearer
+from fastapi import HTTPException, status
 from datetime import datetime, timedelta
 from typing import Optional
+from fastapi import Depends, HTTPException
 from jose import JWTError, jwt
 from pydantic import BaseModel
+
+from app.crud import get_user
+from app.models import User
 from .config import ALGORITHM, PRIVATE_KEY, PUBLIC_KEY
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -26,3 +31,24 @@ def decode_token(token: str):
         return payload
     except JWTError:
         return None
+
+# Function to get current user from JWT token
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> Optional[User]:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        # Fetch user from database using get_user function
+        user = await get_user(username)
+        if user is None:
+            raise credentials_exception
+        return user
+    except JWTError:
+        raise credentials_exception

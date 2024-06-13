@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from .models import Dashboard, DashboardComponent, User
 from .schemas import DashboardCreate, DashboardComponentCreate, DashboardUpdate, DashboardComponentUpdate, UserCreate
 from passlib.hash import bcrypt
+from .database import async_session_maker
 
 # Task3 functions (unchanged)
 
@@ -140,6 +141,25 @@ async def create_user(db: AsyncSession, user: UserCreate):
     await db.commit()
     await db.refresh(db_user)
     return db_user
+
+# async def authenticate_user(db: AsyncSession, username: str, password: str):
+#     result = await db.execute(select(User).filter(User.username == username))
+#     user = result.scalars().first()
+#     if user and user.verify_password(password):
+#         return user
+#     return None
+
+async def get_user(username: str) -> User:
+    async with async_session_maker() as session:
+        async with session.begin():
+            query = select(User).where(User.username == username)
+            result = await session.execute(query)
+            return result.scalars().first()
+        
+import logging
+
+# Create a logger instance
+logger = logging.getLogger(__name__)
 
 async def authenticate_user(db: AsyncSession, username: str, password: str):
     result = await db.execute(select(User).filter(User.username == username))
