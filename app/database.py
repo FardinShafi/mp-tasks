@@ -1,3 +1,5 @@
+# app/database.py
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
@@ -16,6 +18,7 @@ Base = declarative_base()
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:
         yield session
+
 
 # DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/dashboard-data"
 

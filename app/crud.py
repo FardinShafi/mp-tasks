@@ -9,6 +9,13 @@ from fastapi import HTTPException
 from .models import Dashboard, DashboardComponent, Employee, Student, Guardian, Department, Tables, Vendor
 from .schemas import DashboardCreate, DashboardComponentCreate, DashboardUpdate, DashboardComponentUpdate
 from app import models
+from datetime import datetime
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException
+from .models import Dashboard, DashboardComponent, User
+from .schemas import DashboardCreate, DashboardComponentCreate, DashboardUpdate, DashboardComponentUpdate, UserCreate
+from passlib.hash import bcrypt
 
 # Task3 functions (unchanged)
 
@@ -122,3 +129,21 @@ async def get_all_tables(db: AsyncSession):
     table_names = sorted([table.table_name for table in tables.scalars().all()])
     
     return table_names
+
+    
+async def create_user(db: AsyncSession, user: UserCreate):
+    db_user = User(
+        username=user.username,
+        hashed_password=bcrypt.hash(user.password)
+    )
+    db.add(db_user)
+    await db.commit()
+    await db.refresh(db_user)
+    return db_user
+
+async def authenticate_user(db: AsyncSession, username: str, password: str):
+    result = await db.execute(select(User).filter(User.username == username))
+    user = result.scalars().first()
+    if user and user.verify_password(password):
+        return user
+    return None

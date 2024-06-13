@@ -1,11 +1,10 @@
-
+# app/schemas.py
 
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
-# Task3 schemas
-
+# Task 3 schemas
 class DashboardComponentBase(BaseModel):
     title: str
     property: Dict[str, Any]
@@ -50,8 +49,7 @@ class Dashboard(DashboardBase):
     class Config:
         from_attributes = True
 
-# Task2 schemas
-
+# Task 2 schemas
 class EmployeeBase(BaseModel):
     name: str
     department: str
@@ -135,3 +133,19 @@ class Tables(TablesBase):
 
     class Config:
         from_attributes = True
+
+# Auth schemas
+class UserCreate(BaseModel):
+    username: str
+    password: str
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
