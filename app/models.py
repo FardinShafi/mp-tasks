@@ -23,24 +23,19 @@ class Dashboard(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     title = Column(String, nullable=False)
-    created_at = Column(DateTime)
-    updated_at = Column(DateTime)
-    created_by = Column(String)
-    updated_by = Column(String)
-
-    components = relationship("DashboardComponent", back_populates="dashboard")
+    components = Column(JSON, nullable=False)
 
 class DashboardComponent(Base):
-    __tablename__ = "dashboard_components"
+    __tablename__ = 'dashboard_components'
 
-    id = Column(String, primary_key=True, unique=True, index=True)
-    title = Column(String, nullable=False)
-    property = Column(JSON, nullable=False)
-    data_property = Column(JSON, nullable=False)
-    filter_property = Column(JSON, nullable=False)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     dashboard_id = Column(String, ForeignKey('dashboards.id'), nullable=False)
+    item = Column(JSON, nullable=False)
+    content = Column(JSON, nullable=False)
+    configuration = Column(JSON, nullable=False)
+    dataSource = Column(JSON, nullable=False)
 
-    dashboard = relationship("Dashboard", back_populates="components", lazy="select")
+    dashboard = relationship("Dashboard", backref="dashboard_components")
 
 class Employee(Base):
     __tablename__ = 'employee'

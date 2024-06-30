@@ -1,17 +1,18 @@
 # app/auth.py
+
 from fastapi.security import OAuth2PasswordBearer
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import Depends, HTTPException
 from jose import JWTError, jwt
-from pydantic import BaseModel
 
 from app.crud import get_user
 from app.models import User
-from .config import ALGORITHM, PRIVATE_KEY, PUBLIC_KEY
+from app.config import ALGORITHM, PRIVATE_KEY, PUBLIC_KEY
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Function to create a JWT token with JWK
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -33,7 +34,6 @@ def decode_token(token: str):
         return None
 
 # Function to get current user from JWT token
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> Optional[User]:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

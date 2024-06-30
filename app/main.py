@@ -1,9 +1,10 @@
+import asyncio
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import MetaData, inspect, select, text, delete
-from typing import List, Dict
+from typing import Any, List, Dict
 from .database import get_async_session, async_engine, async_session_maker
 from .crud import *
 from .models import Tables
@@ -11,10 +12,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import AsyncEngine
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from .auth import create_access_token, get_current_user
-from .schemas import UserCreate, UserLogin, Token, DashboardCreate, DashboardUpdate, DashboardComponentCreate, DashboardComponentUpdate
+from .schemas import UserCreate, UserLogin, Token, DashboardCreate, DashboardUpdate, DashboardComponentCreate, DashboardComponentUpdate, JSONInsert
 from .crud import create_user, authenticate_user, create_dashboard, get_dashboard, create_dashboard_component, get_dashboard_components, delete_dashboard, delete_dashboard_component, update_dashboard, update_dashboard_component
 from .models import Tables
 from sqlalchemy.sql.expression import delete
+
 
 app = FastAPI()
 
@@ -30,6 +32,9 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 @app.post("/signup", response_model=Token)
 async def signup(user: UserCreate, db: AsyncSession = Depends(get_async_session)):
@@ -80,23 +85,33 @@ async def get_tables(db: AsyncSession = Depends(get_async_session), current_user
         if obsolete_tables:
             await db.execute(delete(Tables).where(Tables.table_name.in_(obsolete_tables)))
 
-    return {"tables": list(current_table_names)}
+    return {"message": "Executed successfully", "data": {"tables": list(current_table_names)}}
 
 # Endpoint to get column names and data types for a specific table
-@app.get("/tables/{table_name}/columns", response_model=Dict[str, str])
-async def get_columns(table_name: str, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)) -> Dict[str, str]:
-    
-    model_class = getattr(models, table_name.capitalize(), None)
+
+# Endpoint to get column names and data types for a specific table
+@app.get("/tables/{table_name}/columns", response_model=Dict[str, Any])
+async def get_columns(table_name: str, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    logger.debug(f"Retrieving columns for table: {table_name}")
+
+    # Get the correct model class based on table name, ignoring case
+    model_class = next((cls for cls in models.__dict__.values() if isinstance(cls, type) and getattr(cls, '__tablename__', '').lower() == table_name.lower()), None)
 
     if model_class is None:
+        logger.error(f"Table not found for name: {table_name}")
         raise HTTPException(status_code=404, detail="Table not found")
-    
+
     # Get the column names and data types for the table
-    columns = {}
+    columns = []
     for column in model_class.__table__.columns:
-        columns[column.name] = str(column.type)
-    
-    return columns
+        columns.append({
+            "name": column.name,
+            "title": column.name,
+            "type": str(column.type)
+        })
+
+    logger.debug(f"Columns for table {table_name}: {columns}")
+    return {"message": "columns retrieved successfully", "data": columns}
 
 # Endpoint to get the list of tables from the tables table
 @app.get("/all-tables", response_model=List[str])
@@ -111,7 +126,13 @@ async def get_all_tables(db: AsyncSession = Depends(get_async_session), current_
 @app.post("/dashboards/")
 async def create_dashboard_handler(dashboard: DashboardCreate, db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
     created_dashboard = await create_dashboard(db, dashboard)
-    return created_dashboard
+    return {"message": "Dashboard created successfully", "data": created_dashboard}
+
+@app.get("/dashboards/")
+async def get_all_dashboards(db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
+    dashboards = await db.execute(select(Dashboard))
+    dashboard_ids_and_titles = [{"dashboard_id": dashboard.id, "title": dashboard.title} for dashboard in dashboards.scalars().all()]
+    return {"message": "dashboards retrieved successfully", "data": dashboard_ids_and_titles}
 
 # Route to get a dashboard
 @app.get("/dashboards/{dashboard_id}")
@@ -124,6 +145,13 @@ async def read_dashboard(dashboard_id: UUID, db: AsyncSession = Depends(get_asyn
     if dashboard is None:
         raise HTTPException(status_code=404, detail="Dashboard not found")
     return dashboard
+    
+# Route to get all dashboard components
+@app.get("/dashboard_components")
+async def get_all_dashboard_components(db: AsyncSession = Depends(get_async_session), current_user: dict = Depends(get_current_user)):
+    components = await db.execute(select(DashboardComponent))
+    component_ids_and_dashboard_ids = [{"component_id": component.id, "dashboard_id": component.dashboard_id} for component in components.scalars().all()]
+    return {"message": "components retrieved successfully", "data": component_ids_and_dashboard_ids}
 
 # Route to create a dashboard component
 @app.post("/dashboards/{dashboard_id}/components/")
@@ -163,3 +191,4 @@ async def update_dashboard_component_handler(component_id: UUID, component: Dash
     component_id_str = str(component_id)
     updated_component = await update_dashboard_component(db, component_id_str, component)
     return updated_component
+

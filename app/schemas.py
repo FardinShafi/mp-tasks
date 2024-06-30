@@ -5,20 +5,33 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
 # Task 3 schemas
-class DashboardComponentBase(BaseModel):
+class DashboardBase(BaseModel):
     title: str
-    property: Dict[str, Any]
-    data_property: Dict[str, Any]
-    filter_property: Dict[str, Any]
+
+class DashboardCreate(DashboardBase):
+    components: Dict[str, Any]
+
+class DashboardUpdate(BaseModel):
+    title: str
+
+class Dashboard(DashboardBase):
+    id: str
+    components: Dict[str, Any]
+
+    class Config:
+        from_attributes = True
+
+class DashboardComponentBase(BaseModel):
+    item: Dict[str, Any]
+    content: Dict[str, Any]
+    configuration: Dict[str, Any]
+    dataSource: Dict[str, Any]
 
 class DashboardComponentCreate(DashboardComponentBase):
     dashboard_id: str
 
-class DashboardComponentUpdate(BaseModel):
-    title: Optional[str] = None
-    property: Optional[Dict[str, Any]] = None
-    data_property: Optional[Dict[str, Any]] = None
-    filter_property: Optional[Dict[str, Any]] = None
+class DashboardComponentUpdate(DashboardComponentBase):
+    pass
 
 class DashboardComponent(DashboardComponentBase):
     id: str
@@ -27,27 +40,6 @@ class DashboardComponent(DashboardComponentBase):
     class Config:
         from_attributes = True
 
-class DashboardBase(BaseModel):
-    title: str
-
-class DashboardCreate(DashboardBase):
-    created_by: str
-    updated_by: str
-
-class DashboardUpdate(BaseModel):
-    title: Optional[str] = None
-    updated_by: Optional[str] = None
-
-class Dashboard(DashboardBase):
-    id: str
-    created_by: str
-    updated_by: str
-    created_at: datetime
-    updated_at: datetime
-    components: List[DashboardComponent]
-
-    class Config:
-        from_attributes = True
 
 # Task 2 schemas
 class EmployeeBase(BaseModel):
@@ -149,3 +141,6 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+class JSONInsert(BaseModel):
+    json_data: Dict[str, Any]

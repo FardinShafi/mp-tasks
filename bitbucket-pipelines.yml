@@ -1,0 +1,15 @@
+image: python:3.6
+
+pipelines:
+  branches:
+    #master:
+    # - step:
+    #    name: master
+    #   script:
+    #    - ssh mpower@123.200.18.24 "/home/mpower/ansible-virtualenv/bin/ansible-playbook -i /home/mpower/cicd-bi_api/live/hosts /home/mpower/cicd-bi_api/live/cicd.yml"
+
+    Development:
+      - step:
+          name: Development
+          script:
+            - ssh mpower@123.200.18.24 "/home/mpower/ansible-virtualenv/bin/ansible-playbook -i /home/mpower/cicd-bi_api/dev/hosts /home/mpower/cicd-bi_api/dev/cicd.yml"

@@ -1,0 +1,7 @@
+# Sample .env file
+
+# Example PostgreSQL database URL for development
+DATABASE_URL="postgresql+asyncpg://username:password@localhost:5432/database_name"
+
+#Migration using alembic
+#run in console: alembic upgrade head

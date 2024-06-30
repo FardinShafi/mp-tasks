@@ -1,18 +1,16 @@
-
-
 from datetime import datetime
 from uuid import UUID, uuid4
 import uuid
-from sqlalchemy import String, cast, delete, inspect, update, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException
+from sqlalchemy import String, cast, delete, inspect, update, select # type: ignore
+from sqlalchemy.ext.asyncio import AsyncSession # type: ignore
+from fastapi import HTTPException, status # type: ignore
 from .models import Dashboard, DashboardComponent, Employee, Student, Guardian, Department, Tables, Vendor
-from .schemas import DashboardCreate, DashboardComponentCreate, DashboardUpdate, DashboardComponentUpdate
+from .schemas import DashboardCreate, DashboardComponentCreate, DashboardUpdate, DashboardComponentUpdate, JSONInsert
 from app import models
 from datetime import datetime
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException
+from sqlalchemy import select # type: ignore
+from sqlalchemy.ext.asyncio import AsyncSession # type: ignore
+from fastapi import HTTPException # type: ignore
 from .models import Dashboard, DashboardComponent, User
 from .schemas import DashboardCreate, DashboardComponentCreate, DashboardUpdate, DashboardComponentUpdate, UserCreate
 from passlib.hash import bcrypt
@@ -20,32 +18,11 @@ from .database import async_session_maker
 
 # Task3 functions (unchanged)
 
-async def create_dashboard(db: AsyncSession, dashboard: DashboardCreate):
-    db_dashboard = Dashboard(
-        title=dashboard.title,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),  # Assuming creation and update time are the same initially
-        created_by=dashboard.created_by,
-        updated_by=dashboard.updated_by
-    )
-    db.add(db_dashboard)
-    await db.commit()
-    await db.refresh(db_dashboard)
-    return db_dashboard
 
 async def get_dashboard(db: AsyncSession, dashboard_id: UUID):
     result = await db.execute(select(Dashboard).filter(Dashboard.id == dashboard_id))
     return result.scalars().first()
 
-async def create_dashboard_component(db: AsyncSession, component: DashboardComponentCreate, dashboard_id: str):
-    component_id = str(uuid.uuid4())  # Generate a new UUID and convert to string
-    component_data = component.dict()
-    component_data['dashboard_id'] = dashboard_id  # Ensure dashboard_id is set
-    db_component = DashboardComponent(id=component_id, **component_data)
-    db.add(db_component)
-    await db.commit()
-    await db.refresh(db_component)
-    return db_component
 
 async def get_dashboard_components(db: AsyncSession, dashboard_id: str):
     result = await db.execute(
@@ -58,7 +35,10 @@ async def delete_dashboard(db: AsyncSession, dashboard_id: str):
         delete(Dashboard).where(cast(Dashboard.id, String) == dashboard_id)
     )
     await db.commit()
-    return result
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    
+    return {"message": "Dashboard deleted successfully"}
 
 async def delete_dashboard_component(db: AsyncSession, component_id: str):
     result = await db.execute(
@@ -69,7 +49,7 @@ async def delete_dashboard_component(db: AsyncSession, component_id: str):
         raise HTTPException(status_code=404, detail="Component not found")
     await db.delete(component)
     await db.commit()
-    return component
+    return {"message": "Component deleted successfully"}
 
 async def update_dashboard(db: AsyncSession, dashboard_id: str, dashboard: DashboardUpdate):
     # Update the dashboard with the given ID
@@ -131,8 +111,22 @@ async def get_all_tables(db: AsyncSession):
     
     return table_names
 
-    
+
+# Function to get a user by username
+async def get_user_by_username(db: AsyncSession, username: str):
+    result = await db.execute(select(User).filter(User.username == username))
+    return result.scalars().first()
+
 async def create_user(db: AsyncSession, user: UserCreate):
+    # Check if the username already exists
+    existing_user = await get_user_by_username(db, user.username)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered"
+        )
+    
+    # Create the new user if the username does not exist
     db_user = User(
         username=user.username,
         hashed_password=bcrypt.hash(user.password)
@@ -141,13 +135,7 @@ async def create_user(db: AsyncSession, user: UserCreate):
     await db.commit()
     await db.refresh(db_user)
     return db_user
-
-# async def authenticate_user(db: AsyncSession, username: str, password: str):
-#     result = await db.execute(select(User).filter(User.username == username))
-#     user = result.scalars().first()
-#     if user and user.verify_password(password):
-#         return user
-#     return None
+    
 
 async def get_user(username: str) -> User:
     async with async_session_maker() as session:
@@ -167,3 +155,66 @@ async def authenticate_user(db: AsyncSession, username: str, password: str):
     if user and user.verify_password(password):
         return user
     return None
+
+
+async def create_dashboard(db: AsyncSession, dashboard: DashboardCreate):
+    # Create the Dashboard entity
+    db_dashboard = Dashboard(
+        title=dashboard.title,
+        components=dashboard.components  # Store the entire JSON structure here
+    )
+    db.add(db_dashboard)
+    await db.commit()
+    await db.refresh(db_dashboard)
+     # Extract items from the "item" section
+    items = dashboard.components.get("item", {}).get("items", [])
+
+    # Create a list to hold DashboardComponent objects
+    components_to_create = []
+
+    # Iterate over items to create DashboardComponent entries
+    for item in items:
+        i_value = item.get("i")
+
+        # Find corresponding content, configuration, and dataSource entries
+        content_data = next((c for c in dashboard.components.get("content", []) if c.get("i") == i_value), {})
+        config_data = next((c for c in dashboard.components.get("configuration", []) if c.get("i") == i_value), {})
+        ds_data = next((d for d in dashboard.components.get("dataSource", []) if d.get("i") == i_value), {})
+
+        # Create DashboardComponent object
+        component = DashboardComponent(
+            dashboard_id=db_dashboard.id,
+            item=item,
+            content=content_data,
+            configuration=config_data,
+            dataSource=ds_data
+        )
+        components_to_create.append(component)
+
+    # Bulk insert all components
+    db.add_all(components_to_create)
+    await db.commit()
+
+    # Return the created Dashboard entity with components included
+    return {"id": db_dashboard.id, "title": db_dashboard.title}
+
+async def create_dashboard_component(db: AsyncSession, component: DashboardComponentCreate, dashboard_id: str):
+    db_component = DashboardComponent(
+        dashboard_id=dashboard_id,
+        item=component.item,
+        content=component.content,
+        configuration=component.configuration,
+        dataSource=component.dataSource
+    )
+    db.add(db_component)
+    await db.commit()
+    await db.refresh(db_component)
+    return db_component
+
+# async def delete_dashboard(db: AsyncSession, dashboard_id: str):
+#     await db.execute(delete(Dashboard).where(Dashboard.id == dashboard_id))
+#     await db.commit()
+
+# async def delete_dashboard_component(db: AsyncSession, component_id: str):
+#     await db.execute(delete(DashboardComponent).where(DashboardComponent.id == component_id))
+#     await db.commit()
